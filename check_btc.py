@@ -3,6 +3,7 @@
 import os
 import sys
 import json
+from datetime import datetime
 import requests
 
 PRICE_THRESHOLD = 62000
@@ -59,16 +60,29 @@ def main():
     if precio is None:
         print("No se pudo obtener el precio de BTC desde ninguna fuente.", file=sys.stderr)
         sys.exit(1)
-    print(f"Precio BTC: ${precio:,.2f} USD")
+    minuto = datetime.now().minute
+    print(f"Precio BTC: ${precio:,.2f} USD (minuto {minuto})")
+
     if precio < PRICE_THRESHOLD:
         mensaje = (
             f"\U0001f6a8 *BTC por debajo de ${PRICE_THRESHOLD:,}*\n\n"
             f"Precio actual: *${precio:,.2f} USD*\n"
-            f"Fuente: api publica"
+            f"\U0001f550 {datetime.now().strftime('%d/%m/%Y %H:%M')} UTC"
         )
         ok = enviar_telegrama(mensaje)
         if ok:
-            print("Notificacion enviada.")
+            print("Alerta de umbral enviada.")
+        else:
+            sys.exit(1)
+    elif minuto < 2:
+        mensaje = (
+            f"\U0001f4ca *Resumen horario BTC*\n\n"
+            f"Precio actual: *${precio:,.2f} USD*\n"
+            f"\U0001f550 {datetime.now().strftime('%d/%m/%Y %H:%M')} UTC"
+        )
+        ok = enviar_telegrama(mensaje)
+        if ok:
+            print("Update horario enviado.")
         else:
             sys.exit(1)
     else:
