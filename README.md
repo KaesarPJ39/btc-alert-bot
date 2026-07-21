@@ -1,62 +1,62 @@
-# Bot de Alertas Bitcoin (Telegram)
+# Bot de Alertas BTC + WBIT (Telegram)
 
-Bot que te avisa por Telegram cuando el precio de Bitcoin cae por debajo de $62.000 USD.
-100% gratis, funciona online 24/7 sin necesidad de tu PC gracias a GitHub Actions.
+Bot que monitorea Bitcoin y WBIT (WisdomTree Physical Bitcoin ETP) y te avisa por Telegram cuando ocurre algo importante.
 
-## Como configurar
+## Alertas configuradas
+
+| Señal | Condición | Frecuencia |
+|-------|-----------|------------|
+| 🚨 Stop-loss | WBIT < €13.00 | Cada 5 min |
+| ⚠️ Zona de entrada | WBIT dentro de ±2% de tu precio de compra | Cada 5 min |
+| 📈 BTC diario | BTC se mueve >2% en el día | 1 vez/día |
+| 🚀 Momentum | WBIT sube >€0.50 desde apertura | 1 vez/día |
+| 🆕 Nuevo máximo | WBIT alcanza nuevo máximo del día | Al ocurrir |
+| ⚡ Movimiento rápido | WBIT mueve >1% en ~5 min | 1 vez/día |
+| 📊 Resumen diario | Resumen de tu posición a las 20:00 UTC | 1 vez/día |
+
+## Configuración
 
 ### 1. Crear el bot en Telegram
 
 1. Abre Telegram y busca `@BotFather`.
-2. Envia `/newbot` y sigue los pasos para crear un bot nuevo.
-3. Guarda el **token** que te da (formato `123456789:ABCdefGhI...`).
-4. Para obtener tu **chat_id**, abre `https://api.telegram.org/bot<TOKEN>/getUpdates` en el navegador (reemplaza `<TOKEN>` con tu token), enviale un mensaje a tu bot desde Telegram, y recarga la pagina. Busca `"chat":{"id":123456789}`.
+2. Envía `/newbot` y sigue los pasos.
+3. Guarda el **token** (formato `123456789:ABCdefGhI...`).
+4. Envía `/start` a tu bot desde Telegram.
+5. Para obtener tu **chat_id**, abre en el navegador:
+   ```
+   https://api.telegram.org/bot<TOKEN>/getUpdates
+   ```
+   Busca `"chat":{"id":123456789}`.
 
 ### 2. Agregar secrets al repositorio
 
-En GitHub, ve a `Settings` > `Secrets and variables` > `Actions` > `New repository secret`:
+En GitHub: `Settings` → `Secrets and variables` → `Actions` → `New repository secret`:
 
 - `TELEGRAM_BOT_TOKEN` → el token de tu bot
-- `TELEGRAM_CHAT_ID` → tu chat_id numerico
+- `TELEGRAM_CHAT_ID` → tu chat_id numérico
 
-### 3. Probar manualmente
+### 3. Probar
 
-#### Opcion A - Probar solo Telegram (recomendado)
+- **Test Telegram**: workflow manual para verificar la conexión.
+- **BTC Price Alert**: workflow manual para probar todas las alertas.
 
-En la pestana `Actions` de tu repositorio, selecciona el workflow **Test Telegram** y haz clic en **Run workflow**. Esto enviara un mensaje de prueba inmediato a tu chat sin depender del precio de Bitcoin ni de la hora. Si no llega, revisa que los secrets esten bien escritos.
+### 4. Personalizar alertas
 
-#### Opcion B - Probar el flujo completo
+Edita las constantes en `check_btc.py`:
 
-Selecciona el workflow **BTC Price Alert** y haz clic en **Run workflow**. Revisa Telegram para ver si llega el mensaje:
-- Si BTC esta **debajo** del umbral, llegara una alerta.
-- Si BTC esta **encima** del umbral y ejecutas cerca del minuto 0 de la hora, llegara el resumen horario.
-- En otros casos no llegara nada (es el comportamiento esperado).
-
-### 4. Prueba local (opcional)
-
-Si tienes Python instalado y las variables de entorno configuradas, puedes probar desde tu PC:
-
-```bash
-# Probar solo Telegram
-python test_telegram.py
-
-# Probar el script completo en modo test (sin consultar precios)
-python check_btc.py --test
+```python
+WBIT_ENTRY_PRICE = 13.57      # Tu precio de compra (EUR)
+WBIT_STOP_LOSS = 13.00        # Stop-loss absoluto
+WBIT_ENTRY_ZONE_PCT = 2.0     # % margen zona de entrada
+WBIT_MOMENTUM_EUR = 0.50      # Subida intraday para alerta
+BTC_DAILY_MOVE_PCT = 2.0      # % movimiento diario BTC
+WBIT_TICKER = "WBTC.PA"       # Yahoo Finance ticker
 ```
 
-### 5. Automático
-
-Una vez en la rama por defecto, el cron empezara a ejecutarse cada 5 minutos automaticamente. Puedes ver el historial en la pestana `Actions`.
-
-## Cambiar el umbral
-
-Edita la constante `PRICE_THRESHOLD` en `check_btc.py` (valor en USD).
-
-## Como funciona
+## Cómo funciona
 
 - Cada 5 minutos GitHub Actions ejecuta `check_btc.py`.
-- Consulta el precio via CoinGecko API (sin API key necesaria).
-- Si CoinGecko falla, usa Binance API como respaldo automatico.
-- **Cada hora** (minuto 0): recibe un resumen con el precio actual de BTC.
-- **Si BTC baja de $62.000**: recibes una alerta inmediata en cualquier momento.
-- Mientras BTC este debajo del umbral, recibiras un aviso cada 5 minutos.
+- Consulta BTC via CoinGecko (respaldo: Binance).
+- Consulta WBIT via Yahoo Finance API.
+- Evalúa todas las condiciones y envía alertas a Telegram.
+- El estado se cachea entre ejecuciones para evitar alertas duplicadas.
