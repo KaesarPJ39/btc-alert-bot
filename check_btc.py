@@ -3,6 +3,7 @@
 import os
 import sys
 import json
+import argparse
 from datetime import datetime
 import requests
 
@@ -56,6 +57,24 @@ def enviar_telegrama(mensaje):
         return False
 
 def main():
+    parser = argparse.ArgumentParser(description="Bot de alertas BTC para Telegram")
+    parser.add_argument(
+        "--test",
+        action="store_true",
+        help="Envia un mensaje de prueba inmediato a Telegram sin consultar precios"
+    )
+    args = parser.parse_args()
+
+    if args.test:
+        mensaje = (
+            "\U0001f7e2 *Prueba de conexion exitosa*\n\n"
+            "El bot puede enviar mensajes a este chat.\n"
+            f"\U0001f550 {datetime.now().strftime('%d/%m/%Y %H:%M')} UTC"
+        )
+        ok = enviar_telegrama(mensaje)
+        print("Mensaje de prueba enviado correctamente." if ok else "Fallo el envio de prueba.")
+        sys.exit(0 if ok else 1)
+
     precio = obtener_precio_btc()
     if precio is None:
         print("No se pudo obtener el precio de BTC desde ninguna fuente.", file=sys.stderr)
@@ -86,7 +105,7 @@ def main():
         else:
             sys.exit(1)
     else:
-        print("Por encima del umbral. Sin notificacion.")
+        print("Por encima del umbral y fuera del resumen horario. Sin notificacion.")
 
 if __name__ == "__main__":
     main()

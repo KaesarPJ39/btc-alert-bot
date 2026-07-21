@@ -21,9 +21,30 @@ En GitHub, ve a `Settings` > `Secrets and variables` > `Actions` > `New reposito
 
 ### 3. Probar manualmente
 
-En la pestana `Actions` de tu repositorio, selecciona el workflow **BTC Price Alert** y haz clic en **Run workflow**. Revisa Telegram para ver si llega el mensaje. Si BTC esta encima del umbral, recibiras el resumen horario (si ejecutas en minuto < 2).
+#### Opcion A - Probar solo Telegram (recomendado)
 
-### 4. Automático
+En la pestana `Actions` de tu repositorio, selecciona el workflow **Test Telegram** y haz clic en **Run workflow**. Esto enviara un mensaje de prueba inmediato a tu chat sin depender del precio de Bitcoin ni de la hora. Si no llega, revisa que los secrets esten bien escritos.
+
+#### Opcion B - Probar el flujo completo
+
+Selecciona el workflow **BTC Price Alert** y haz clic en **Run workflow**. Revisa Telegram para ver si llega el mensaje:
+- Si BTC esta **debajo** del umbral, llegara una alerta.
+- Si BTC esta **encima** del umbral y ejecutas cerca del minuto 0 de la hora, llegara el resumen horario.
+- En otros casos no llegara nada (es el comportamiento esperado).
+
+### 4. Prueba local (opcional)
+
+Si tienes Python instalado y las variables de entorno configuradas, puedes probar desde tu PC:
+
+```bash
+# Probar solo Telegram
+python test_telegram.py
+
+# Probar el script completo en modo test (sin consultar precios)
+python check_btc.py --test
+```
+
+### 5. Automático
 
 Una vez en la rama por defecto, el cron empezara a ejecutarse cada 5 minutos automaticamente. Puedes ver el historial en la pestana `Actions`.
 
