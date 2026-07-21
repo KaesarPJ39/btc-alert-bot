@@ -18,15 +18,21 @@ from datetime import datetime
 
 def enviar_telegrama(mensaje):
     token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
-    if not token or not chat_id:
+    chat_id_raw = os.environ.get("TELEGRAM_CHAT_ID")
+    if not token or not chat_id_raw:
         print("ERROR: faltan secrets TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID", file=sys.stderr)
         sys.exit(1)
+    try:
+        chat_id = int(chat_id_raw.strip())
+    except ValueError:
+        print(f"ERROR: TELEGRAM_CHAT_ID no es un numero valido: '{chat_id_raw}'", file=sys.stderr)
+        sys.exit(1)
+    print(f"Usando chat_id: {chat_id}")
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     try:
         resp = requests.post(
             url,
-            data={"chat_id": chat_id, "text": mensaje, "parse_mode": "Markdown"},
+            json={"chat_id": chat_id, "text": mensaje, "parse_mode": "Markdown"},
             timeout=10,
         )
         if resp.status_code == 200 and resp.json().get("ok") is True:
