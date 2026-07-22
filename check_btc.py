@@ -12,8 +12,10 @@ import requests
 # ══════════════════════════════════════════════════════════════
 
 WBIT_ENTRY_PRICE = 13.57          # Precio al que compraste WBIT (EUR)
+WBIT_SHARES = 66                  # Numero de participaciones compradas
 WBIT_STOP_LOSS = 13.00            # Stop-loss absoluto (EUR)
-WBIT_ENTRY_ZONE_PCT = 2.0         # % de margen para alerta de zona de compra
+WBIT_ENTRY_ZONE_PCT = 0.5         # % de margen para alerta de zona de compra (solo muy cerca)
+WBIT_PROFIT_LEVELS = [3.0, 5.0]   # % de beneficio para alertar (ej: +3%, +5%)
 WBIT_MOMENTUM_EUR = 0.50          # Subida intraday en EUR para alerta de momentum
 BTC_DAILY_MOVE_PCT = 2.0          # % de movimiento diario de BTC para alertar
 WBIT_TICKER = "WBTC.PA"           # Yahoo Finance ticker de WBIT en EUR
@@ -157,9 +159,10 @@ def check_alertas():
         print()
     if wbit:
         pnl = calcular_pct(WBIT_ENTRY_PRICE, wbit["precio"])
+        pnl_total = (wbit["precio"] - WBIT_ENTRY_PRICE) * WBIT_SHARES
         pnl_emoji = "🟢" if pnl >= 0 else "🔴"
         print(f"WBIT: €{wbit['precio']:.3f} (open €{wbit['apertura']:.3f}) "
-              f"{pnl_emoji} P&L: {pnl:+.2f}%")
+              f"{pnl_emoji} P&L: {pnl:+.2f}% | Total: €{pnl_total:+.2f}")
 
     # ── ALERTA 1: Stop-loss WBIT ─────────────────────────────
     if wbit and wbit["precio"] < WBIT_STOP_LOSS:
@@ -177,21 +180,43 @@ def check_alertas():
             alertas_enviadas.append("stop-loss")
             print("🚨 Alerta STOP-LOSS enviada")
 
-    # ── ALERTA 2: Zona de entrada (precio compra ±2%) ────────
-    if wbit:
+    # ── ALERTA 2: Zona de entrada (precio compra ±0.5%) ──────
+    if wbit and not estado.get("entry_zone_hoy"):
         margen = WBIT_ENTRY_PRICE * (WBIT_ENTRY_ZONE_PCT / 100)
         if abs(wbit["precio"] - WBIT_ENTRY_PRICE) <= margen:
             pnl = calcular_pct(WBIT_ENTRY_PRICE, wbit["precio"])
+            pnl_total = (wbit["precio"] - WBIT_ENTRY_PRICE) * WBIT_SHARES
             msg = (
                 f"⚠️ *WBIT en zona de entrada*\n\n"
                 f"Precio: *€{wbit['precio']:.3f}*\n"
                 f"Tu entrada: €{WBIT_ENTRY_PRICE}\n"
-                f"P&L: *{pnl:+.2f}%*\n\n"
-                f"Estas cerca de tu precio de compra."
+                f"P&L: *{pnl:+.2f}%* (€{pnl_total:+.2f} total)\n\n"
+                f"Cerca de tu punto de entrada."
             )
             if enviar_telegrama(msg):
+                estado["entry_zone_hoy"] = True
                 alertas_enviadas.append("zona-entrada")
                 print("⚠️ Alerta zona de entrada enviada")
+
+    # ── ALERTA 2b: Niveles de beneficio (+3%, +5%) ────────────
+    if wbit:
+        pnl = calcular_pct(WBIT_ENTRY_PRICE, wbit["precio"])
+        for nivel in WBIT_PROFIT_LEVELS:
+            clave = f"profit_{int(nivel)}"
+            if pnl >= nivel and not estado.get(clave):
+                pnl_total = (wbit["precio"] - WBIT_ENTRY_PRICE) * WBIT_SHARES
+                msg = (
+                    f"🎯 *WBIT +{nivel:.0f}% beneficio*\n\n"
+                    f"Precio: *€{wbit['precio']:.3f}*\n"
+                    f"Entrada: €{WBIT_ENTRY_PRICE}\n"
+                    f"P&L: *{pnl:+.2f}%*\n"
+                    f"Beneficio total: *€{pnl_total:+.2f}* ({WBIT_SHARES} part.)\n\n"
+                    f"📈 Considera tomar parciales."
+                )
+                if enviar_telegrama(msg):
+                    estado[clave] = True
+                    alertas_enviadas.append(f"profit-{int(nivel)}")
+                    print(f"🎯 Alerta +{nivel:.0f}% enviada")
 
     # ── ALERTA 3: BTC movimiento diario >2% ──────────────────
     if btc and not estado.get("btc_daily_alert"):
@@ -286,13 +311,15 @@ def check_alertas():
         if wbit:
             pnl = calcular_pct(WBIT_ENTRY_PRICE, wbit["precio"])
             pnl_eur = wbit["precio"] - WBIT_ENTRY_PRICE
+            pnl_total = pnl_eur * WBIT_SHARES
             pnl_emoji = "🟢" if pnl >= 0 else "🔴"
             lineas.append(
                 f"*WBIT*\n"
                 f"Precio cierre: *€{wbit['precio']:.3f}*\n"
                 f"Max/Min dia: €{wbit['high']:.3f} / €{wbit['low']:.3f}\n"
                 f"Apertura: €{wbit['apertura']:.3f}\n"
-                f"{pnl_emoji} P&L: *{pnl:+.2f}%* (€{pnl_eur:+.3f}/part.)"
+                f"{pnl_emoji} P&L: *{pnl:+.2f}%* (€{pnl_eur:+.3f}/part.)\n"
+                f"💰 Beneficio total: *€{pnl_total:+.2f}* ({WBIT_SHARES} part.)"
             )
         if btc:
             lineas.append(
