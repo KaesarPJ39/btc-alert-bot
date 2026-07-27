@@ -27,10 +27,10 @@ jobs:
       - name: Restore flight price history
         uses: actions/cache@v4
         with:
-          path: flight_price_history_v2.json
-          key: flight-history-v2-${{ github.run_id }}
+          path: flight_price_history_v3.json
+          key: flight-history-v3-${{ github.run_id }}
           restore-keys: |
-            flight-history-v2-
+            flight-history-v3-
 
       - name: Run flight price monitor
         env:

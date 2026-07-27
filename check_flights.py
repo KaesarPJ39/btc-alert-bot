@@ -37,7 +37,7 @@ FLIGHT_OPTIONS = [
     },
 ]
 
-HISTORY_FILE = "flight_price_history_v2.json"
+HISTORY_FILE = "flight_price_history_v3.json"
 SERPAPI_URL = "https://serpapi.com/search.json"
 DAYS_ES = ["Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"]
 
