@@ -238,26 +238,35 @@ def check_option(option, api_key, history):
     print(f"  Mejor precio historico: €{opt_hist['best_price']:.2f}")
 
     if price < opt_hist["best_price"]:
-        ahorro = opt_hist["best_price"] - price
-        ahorro_total = ahorro  # por persona / reserva
+        previous_best = opt_hist["best_price"]
+        ahorro = previous_best - price
         opt_hist["best_price"] = price
         opt_hist["best_price_at"] = now_iso
 
-        out = itinerary["flights"][0]
-        ret = itinerary["flights"][1]
+        flights = itinerary.get("flights", [])
+        lineas_vuelos = []
+        if len(flights) >= 1:
+            out = flights[0]
+            lineas_vuelos.append(
+                f"🛫 Ida: {out.get('flight_number', '?')} "
+                f"{out.get('departure_airport', {}).get('id', option['outbound']['from'])} "
+                f"-> {out.get('arrival_airport', {}).get('id', option['outbound']['to'])}"
+            )
+        if len(flights) >= 2:
+            ret = flights[1]
+            lineas_vuelos.append(
+                f"🛬 Vuelta: {ret.get('flight_number', '?')} "
+                f"{ret.get('departure_airport', {}).get('id', option['return']['from'])} "
+                f"-> {ret.get('arrival_airport', {}).get('id', option['return']['to'])}"
+            )
 
         msg = (
             f"✈️ *Bajada de precio: {option_name}*\n\n"
             f"💶 Precio actual: *€{price:.2f}*\n"
-            f"📉 Mejor precio anterior: €{opt_hist['best_price']:.2f}\n"
-            f"💰 Ahorro: *€{ahorro_total:.2f}*\n\n"
-            f"🛫 Ida: {out.get('flight_number', '?')} "
-            f"{out.get('departure_airport', {}).get('id', option['outbound']['from'])} "
-            f"-> {out.get('arrival_airport', {}).get('id', option['outbound']['to'])}\n"
-            f"🛬 Vuelta: {ret.get('flight_number', '?')} "
-            f"{ret.get('departure_airport', {}).get('id', option['return']['from'])} "
-            f"-> {ret.get('arrival_airport', {}).get('id', option['return']['to'])}\n\n"
-            f"🕐 {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} UTC"
+            f"📉 Mejor precio anterior: €{previous_best:.2f}\n"
+            f"💰 Ahorro: *€{ahorro:.2f}*\n\n"
+            + "\n".join(lineas_vuelos) +
+            f"\n\n🕐 {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} UTC"
         )
         if enviar_telegrama(msg):
             print(f"  ✅ Alerta enviada: €{ahorro:.2f} de ahorro")
