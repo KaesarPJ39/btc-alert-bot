@@ -331,9 +331,6 @@ def check_option(option, api_key, history):
         opt_hist["last_check_at"] = datetime.now(timezone.utc).isoformat()
         return False
 
-    # Mostrar vuelos disponibles para depuracion
-    log_available_flights(data)
-
     result = find_matching_round_trip(data, option)
 
     if result is None:
@@ -344,6 +341,7 @@ def check_option(option, api_key, history):
 
     if result is None or result["price"] is None:
         print(f"  No se pudo obtener precio para {option_name}.")
+        log_available_flights(data)
         opt_hist["last_check_at"] = datetime.now(timezone.utc).isoformat()
         return False
 
@@ -370,11 +368,16 @@ def check_option(option, api_key, history):
         out_line = format_flight_line(result.get("outbound"), option["outbound"], "🛫")
         ret_line = format_flight_line(result.get("return"), option["return"], "🛬")
 
+        match_note = ""
+        if result.get("match") == "ida exacta":
+            match_note = "\n_(Precio total redondo con vuelo de ida exacto)_\n"
+
         msg = (
             f"✈️ *Bajada de precio: {option_name}*\n\n"
             f"💶 Precio total actual: *€{price:.2f}*\n"
             f"📉 Mejor precio anterior: €{previous_best:.2f}\n"
-            f"💰 Ahorro: *€{ahorro:.2f}*\n\n"
+            f"💰 Ahorro: *€{ahorro:.2f}*"
+            f"{match_note}\n"
             f"{out_line}\n"
             f"{ret_line}\n\n"
             f"🕐 {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} UTC"
