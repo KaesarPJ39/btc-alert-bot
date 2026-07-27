@@ -305,6 +305,9 @@ def check_option(option, api_key, history):
         opt_hist["last_check_at"] = datetime.now(timezone.utc).isoformat()
         return False
 
+    # Mostrar vuelos disponibles para depuracion
+    log_available_flights(data)
+
     result = find_matching_round_trip(data, option)
 
     if result is None:
@@ -315,7 +318,6 @@ def check_option(option, api_key, history):
 
     if result is None or result["price"] is None:
         print(f"  No se pudo obtener precio para {option_name}.")
-        log_available_flights(data)
         opt_hist["last_check_at"] = datetime.now(timezone.utc).isoformat()
         return False
 
