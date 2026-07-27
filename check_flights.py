@@ -173,26 +173,36 @@ def flight_matches(flight, wanted_fn):
 
 
 def find_matching_round_trip(data, option):
-    """Busca un itinerario redondo cuyos dos segmentos coincidan."""
+    """Busca el itinerario mas barato cuyo vuelo de IDA coincida.
+    SerpApi solo devuelve el vuelo de ida en 'flights', pero el precio
+    es el total redondo."""
+    candidates = []
     for key in ["best_flights", "other_flights", "top_flights"]:
         if key not in data or not isinstance(data[key], list):
             continue
         for itinerary in data[key]:
             outbound_flights = itinerary.get("flights", [])
             return_flights = itinerary.get("return_flights", [])
-
             out = outbound_flights[0] if outbound_flights else None
-            ret = return_flights[0] if return_flights else (outbound_flights[1] if len(outbound_flights) > 1 else None)
+            ret = return_flights[0] if return_flights else None
 
-            if out and ret and \
-               flight_matches(out, option["outbound"]["flight_number"]) and \
-               flight_matches(ret, option["return"]["flight_number"]):
-                return {
-                    "price": parse_price(itinerary.get("price")),
-                    "outbound": out,
-                    "return": ret,
-                    "match": "vuelos exactos",
-                }
+            if out and flight_matches(out, option["outbound"]["flight_number"]):
+                price = parse_price(itinerary.get("price"))
+                if price is not None:
+                    candidates.append((price, itinerary, out, ret, "ida exacta"))
+
+    if candidates:
+        candidates.sort(key=lambda x: x[0])
+        _, itinerary, out, ret, match = candidates[0]
+        # Si tambien coincide la vuelta, es un match completo
+        if ret and flight_matches(ret, option["return"]["flight_number"]):
+            match = "vuelos exactos"
+        return {
+            "price": candidates[0][0],
+            "outbound": out,
+            "return": ret,
+            "match": match,
+        }
     return None
 
 
