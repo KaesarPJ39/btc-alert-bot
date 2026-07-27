@@ -3,7 +3,7 @@
 """
 Bot de monitoreo de precios de vuelos (SerpApi Google Flights + Telegram).
 
-Monitoriza dos opciones de vuelo a Tenerife, envia un resumen cada 8 horas
+Monitoriza dos opciones de vuelo a Tenerife, envia un resumen a la 1am, 9am, 17pm y 22pm (hora local España)
 y avisa cuando el precio total redondo baja del minimo historico.
 
 Necesita la variable de entorno SERPAPI_API_KEY.

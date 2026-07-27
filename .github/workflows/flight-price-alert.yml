@@ -2,8 +2,8 @@ name: Flight Price Monitor
 
 on:
   schedule:
-    # Cada 8 horas en horarios optimos: 00:00, 08:00, 16:00 UTC
-    - cron: "0 0,8,16 * * *"
+    # Ejecucion a la 1am, 9am, 17pm y 22pm CEST (07:00, 15:00, 20:00, 23:00 UTC)
+    - cron: "0 7,15,20,23 * * *"
   workflow_dispatch:
 
 permissions:
