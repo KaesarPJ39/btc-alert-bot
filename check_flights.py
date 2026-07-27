@@ -318,6 +318,19 @@ def format_flight_line(leg, option_leg, emoji):
     return f"{emoji} {full_fn} {dep} -> {arr}"
 
 
+def build_google_flights_url(option):
+    """Construye enlace directo a Google Flights para la opcion."""
+    origin = option["outbound"]["from"]
+    dest = option["outbound"]["to"]
+    out_date = option["outbound"]["date"]
+    ret_date = option["return"]["date"]
+    query = f"Flights from {origin} to {dest} on {out_date} through {ret_date}"
+    return (
+        f"https://www.google.com/travel/flights/search?"
+        f"hl=es&curr=EUR&q={requests.utils.quote(query)}"
+    )
+
+
 def check_option(option, api_key, history):
     option_name = option["name"]
     opt_hist = init_option_history(history, option_name, option["baseline_price"])
@@ -372,6 +385,7 @@ def check_option(option, api_key, history):
         if result.get("match") == "ida exacta":
             match_note = "\n_(Precio total redondo con vuelo de ida exacto)_\n"
 
+        url = build_google_flights_url(option)
         msg = (
             f"✈️ *Bajada de precio: {option_name}*\n\n"
             f"💶 Precio total actual: *€{price:.2f}*\n"
@@ -380,6 +394,7 @@ def check_option(option, api_key, history):
             f"{match_note}\n"
             f"{out_line}\n"
             f"{ret_line}\n\n"
+            f"🔗 [Ver en Google Flights]({url})\n\n"
             f"🕐 {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} UTC"
         )
         if enviar_telegrama(msg):
