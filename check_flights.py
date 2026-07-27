@@ -17,12 +17,14 @@ from datetime import datetime, timezone
 from collections import defaultdict
 import requests
 
-# CONFIGURACION
+# CONFIGURACION DE VUELOS EXACTOS SOLICITADOS
+# Option 1: Iberia Express (MAD 06:40 -> TFN 08:30 / TFN 21:05 -> MAD 00:50)
+# Option 2: Vueling Airlines (BCN 07:20 -> TFN 09:55 / TFN 20:15 -> BCN 00:35)
 
 FLIGHT_OPTIONS = [
     {
         "name": "Vueling",
-        "outbound": {"flight_number": "VY3216", "from": "BCN", "to": "TFN", "date": "2026-09-23", "time": "15:50"},
+        "outbound": {"flight_number": "VY3212", "from": "BCN", "to": "TFN", "date": "2026-09-23", "time": "07:20"},
         "return": {"flight_number": "VY3209", "from": "TFN", "to": "BCN", "date": "2026-09-27", "time": "20:15"},
         "baseline_price": 158.0,
     },
@@ -165,8 +167,34 @@ def flight_matches(flight, wanted_fn):
     return full == wanted
 
 
+def leg_matches(leg, wanted_leg):
+    if not leg or not wanted_leg:
+        return False
+
+    # Verificar hora de salida si se especifica en los parámetros deseados
+    wanted_time = wanted_leg.get("time")
+    if wanted_time:
+        dep_time_str = leg.get("departure_airport", {}).get("time", "") or leg.get("time", "")
+        if wanted_time not in dep_time_str:
+            return False
+
+    # Verificar numero de vuelo o aerolinea
+    wanted_fn = wanted_leg.get("flight_number")
+    if wanted_fn:
+        fn_match = flight_matches(leg, wanted_fn)
+        if not fn_match:
+            carrier = (leg.get("airline", "") + " " + leg.get("carrier_code", "")).lower()
+            wanted_carrier = wanted_fn[:2].lower()
+            if wanted_carrier not in carrier and wanted_fn.lower() not in carrier:
+                return False
+
+    return True
+
+
 def find_matching_round_trip(data, option):
-    candidates = []
+    exact_candidates = []
+    partial_candidates = []
+
     for key in ["best_flights", "other_flights", "top_flights"]:
         if key not in data or not isinstance(data[key], list):
             continue
@@ -182,24 +210,38 @@ def find_matching_round_trip(data, option):
             else:
                 ret = None
 
-            if out and flight_matches(out, option["outbound"]["flight_number"]):
-                raw_price = itinerary.get("price") or itinerary.get("extracted_price")
-                price = parse_price(raw_price)
-                if price is not None:
-                    match_type = "ida exacta"
-                    if ret and flight_matches(ret, option["return"]["flight_number"]):
-                        match_type = "vuelos exactos"
-                    candidates.append((price, itinerary, out, ret, match_type))
+            out_ok = leg_matches(out, option["outbound"])
+            ret_ok = leg_matches(ret, option["return"])
 
-    if candidates:
-        candidates.sort(key=lambda x: (0 if x[4] == "vuelos exactos" else 1, x[0]))
-        price, itinerary, out, ret, match = candidates[0]
+            raw_price = itinerary.get("price") or itinerary.get("extracted_price")
+            price = parse_price(raw_price)
+
+            if price is not None:
+                if out_ok and ret_ok:
+                    exact_candidates.append((price, itinerary, out, ret, "vuelos exactos"))
+                elif out_ok:
+                    partial_candidates.append((price, itinerary, out, ret, "ida exacta"))
+
+    if exact_candidates:
+        exact_candidates.sort(key=lambda x: x[0])
+        price, itinerary, out, ret, match = exact_candidates[0]
         return {
             "price": price,
             "outbound": out,
             "return": ret,
             "match": match,
         }
+
+    if partial_candidates:
+        partial_candidates.sort(key=lambda x: x[0])
+        price, itinerary, out, ret, match = partial_candidates[0]
+        return {
+            "price": price,
+            "outbound": out,
+            "return": ret,
+            "match": match,
+        }
+
     return None
 
 
@@ -282,13 +324,16 @@ def get_cheapest_round_trip(data):
 
 def format_flight_line(leg, option_leg, emoji):
     if leg is None:
-        return f"{emoji} {option_leg['flight_number']} {option_leg['from']} -> {option_leg['to']}"
+        return f"{emoji} {option_leg['flight_number']} {option_leg['from']} -> {option_leg['to']} ({option_leg.get('time', '')})"
     dep = leg.get("departure_airport", {}).get("id", option_leg["from"])
     arr = leg.get("arrival_airport", {}).get("id", option_leg["to"])
     carrier = leg.get("carrier_code", leg.get("airline", ""))
     fn = leg.get("flight_number", option_leg["flight_number"])
     full_fn = f"{carrier}{fn}".strip()
-    return f"{emoji} {full_fn} {dep} -> {arr}"
+    time_str = leg.get("departure_airport", {}).get("time", option_leg.get("time", ""))
+    if " " in time_str:
+        time_str = time_str.split(" ")[-1]
+    return f"{emoji} {full_fn} {dep} ({time_str}) -> {arr}"
 
 
 def build_google_flights_url(option):
