@@ -178,12 +178,14 @@ def find_matching_round_trip(data, option):
         if key not in data or not isinstance(data[key], list):
             continue
         for itinerary in data[key]:
-            flights = itinerary.get("flights", [])
-            if len(flights) < 2:
-                continue
-            out = flights[0]
-            ret = flights[1]
-            if flight_matches(out, option["outbound"]["flight_number"]) and \
+            outbound_flights = itinerary.get("flights", [])
+            return_flights = itinerary.get("return_flights", [])
+
+            out = outbound_flights[0] if outbound_flights else None
+            ret = return_flights[0] if return_flights else (outbound_flights[1] if len(outbound_flights) > 1 else None)
+
+            if out and ret and \
+               flight_matches(out, option["outbound"]["flight_number"]) and \
                flight_matches(ret, option["return"]["flight_number"]):
                 return {
                     "price": parse_price(itinerary.get("price")),
@@ -221,21 +223,26 @@ def get_cheapest_airline_round_trip(data, airline_name):
         if key not in data or not isinstance(data[key], list):
             continue
         for itinerary in data[key]:
-            flights = itinerary.get("flights", [])
-            if len(flights) < 2:
+            outbound_flights = itinerary.get("flights", [])
+            return_flights = itinerary.get("return_flights", [])
+            all_flights = outbound_flights + return_flights
+            if len(all_flights) < 2:
                 continue
-            if airline_name_matches(flights[0], airline_name) or airline_name_matches(flights[1], airline_name):
+            if any(airline_name_matches(f, airline_name) for f in all_flights):
                 price = parse_price(itinerary.get("price"))
                 if price is not None:
                     candidates.append((price, itinerary))
     if candidates:
         candidates.sort(key=lambda x: x[0])
         itinerary = candidates[0][1]
-        flights = itinerary.get("flights", [])
+        outbound_flights = itinerary.get("flights", [])
+        return_flights = itinerary.get("return_flights", [])
+        out = outbound_flights[0] if outbound_flights else None
+        ret = return_flights[0] if return_flights else (outbound_flights[1] if len(outbound_flights) > 1 else None)
         return {
             "price": candidates[0][0],
-            "outbound": flights[0],
-            "return": flights[1],
+            "outbound": out,
+            "return": ret,
             "match": f"mas barato {airline_name} (fallback)",
         }
     return None
@@ -254,11 +261,14 @@ def get_cheapest_round_trip(data):
     if candidates:
         candidates.sort(key=lambda x: x[0])
         itinerary = candidates[0][1]
-        flights = itinerary.get("flights", [])
+        outbound_flights = itinerary.get("flights", [])
+        return_flights = itinerary.get("return_flights", [])
+        out = outbound_flights[0] if outbound_flights else None
+        ret = return_flights[0] if return_flights else (outbound_flights[1] if len(outbound_flights) > 1 else None)
         return {
             "price": candidates[0][0],
-            "outbound": flights[0] if len(flights) > 0 else None,
-            "return": flights[1] if len(flights) > 1 else None,
+            "outbound": out,
+            "return": ret,
             "match": "vuelo redondo mas barato (fallback)",
         }
     return None
@@ -272,13 +282,19 @@ def log_available_flights(data):
             continue
         for i, itinerary in enumerate(data[key][:3]):
             flights = itinerary.get("flights", [])
+            return_flights = itinerary.get("return_flights", [])
             nums = []
             for f in flights:
                 carrier = f.get("carrier_code", f.get("airline", ""))
                 num = f.get("flight_number", "?")
                 nums.append(f"{carrier}{num}")
+            ret_nums = []
+            for f in return_flights:
+                carrier = f.get("carrier_code", f.get("airline", ""))
+                num = f.get("flight_number", "?")
+                ret_nums.append(f"{carrier}{num}")
             price = itinerary.get("price", "?")
-            print(f"    {key}[{i}] {nums} -> {price}")
+            print(f"    {key}[{i}] ida={nums} vuelta={ret_nums} -> {price}")
 
 
 def format_flight_line(leg, option_leg, emoji):
