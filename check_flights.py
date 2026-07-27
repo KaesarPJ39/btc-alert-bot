@@ -6,8 +6,9 @@ Bot de monitoreo de precios de vuelos (SerpApi Google Flights + Telegram).
 Monitoriza dos opciones de vuelo a Tenerife y avisa por Telegram cuando
 el precio TOTAL de ida + vuelta baja del minimo historico registrado.
 
-Para cada opcion busca los tramos de ida y vuelta por separado, encuentra
-los numeros de vuelo exactos y suma sus precios.
+Busca vuelos redondos en Google Flights e intenta identificar los numeros
+de vuelo exactos. Si no los encuentra, usa el itinerario mas barato de la
+misma aerolinea como referencia.
 
 Necesita la variable de entorno SERPAPI_API_KEY.
 """
@@ -125,39 +126,6 @@ def enviar_telegrama(mensaje):
         return False
 
 
-def search_one_way(date, from_airport, to_airport, api_key):
-    params = {
-        "engine": "google_flights",
-        "departure_id": from_airport,
-        "arrival_id": to_airport,
-        "outbound_date": date,
-        "currency": "EUR",
-        "hl": "es",
-        "gl": "es",
-        "api_key": api_key,
-    }
-    resp = requests.get(SERPAPI_URL, params=params, timeout=60)
-    resp.raise_for_status()
-    return resp.json()
-
-
-def find_flight_in_data(data, flight_number):
-    for key in ["best_flights", "other_flights", "top_flights"]:
-        if key not in data or not isinstance(data[key], list):
-            continue
-        for itinerary in data[key]:
-            flights = itinerary.get("flights", [])
-            if not flights:
-                continue
-            flight = flights[0]
-            if flight.get("flight_number") == flight_number:
-                return {
-                    "price": parse_price(itinerary.get("price")),
-                    "flight": flight,
-                }
-    return None
-
-
 def search_round_trip(option, api_key):
     params = {
         "engine": "google_flights",
@@ -175,9 +143,37 @@ def search_round_trip(option, api_key):
     return resp.json()
 
 
+def normalize_flight_number(fn):
+    """Convierte 'VY3216' o '3216' en '3216' para comparar."""
+    if not fn:
+        return ""
+    fn = str(fn).strip().upper()
+    # Quitar prefijo de aerolinea (2-3 letras al inicio)
+    digits = ""
+    for ch in fn:
+        if ch.isdigit():
+            digits += ch
+    return digits
+
+
+def flight_matches(flight, wanted_fn):
+    """Comprueba si un segmento coincide con el numero de vuelo deseado."""
+    if not flight:
+        return False
+    wanted_digits = normalize_flight_number(wanted_fn)
+    # Comparar numero completo
+    if normalize_flight_number(flight.get("flight_number", "")) == wanted_digits:
+        return True
+    # Comparar tambien con carrier_code + number
+    carrier = flight.get("airline", "") or flight.get("carrier_code", "")
+    full = carrier + flight.get("flight_number", "")
+    if normalize_flight_number(full) == wanted_digits:
+        return True
+    return False
+
+
 def find_matching_round_trip(data, option):
-    wanted_out = option["outbound"]["flight_number"]
-    wanted_ret = option["return"]["flight_number"]
+    """Busca un itinerario redondo cuyos dos segmentos coincidan."""
     for key in ["best_flights", "other_flights", "top_flights"]:
         if key not in data or not isinstance(data[key], list):
             continue
@@ -185,19 +181,68 @@ def find_matching_round_trip(data, option):
             flights = itinerary.get("flights", [])
             if len(flights) < 2:
                 continue
-            out_fn = flights[0].get("flight_number", "")
-            ret_fn = flights[1].get("flight_number", "")
-            if out_fn == wanted_out and ret_fn == wanted_ret:
+            out = flights[0]
+            ret = flights[1]
+            if flight_matches(out, option["outbound"]["flight_number"]) and \
+               flight_matches(ret, option["return"]["flight_number"]):
                 return {
                     "price": parse_price(itinerary.get("price")),
-                    "outbound": flights[0],
-                    "return": flights[1],
-                    "match": "round-trip exacto",
+                    "outbound": out,
+                    "return": ret,
+                    "match": "vuelos exactos",
                 }
     return None
 
 
+def airline_name_matches(flight, name):
+    """Comprueba si un vuelo pertenece a la aerolinea indicada."""
+    if not flight:
+        return False
+    full_name = (flight.get("airline", "") + " " + flight.get("airline_logo", "")).lower()
+    code = flight.get("carrier_code", "").lower()
+    target = name.lower()
+    if target in full_name:
+        return True
+    # Mapeos de codigos IATA
+    mappings = {
+        "vueling": ["vueling", "vy"],
+        "iberia express": ["iberia express", "iberia_express", "i2", "iberia"],
+    }
+    for alias in mappings.get(target, [target]):
+        if alias in full_name or alias == code:
+            return True
+    return False
+
+
+def get_cheapest_airline_round_trip(data, airline_name):
+    """Fallback: itinerario redondo mas barato de la aerolinea indicada."""
+    candidates = []
+    for key in ["best_flights", "other_flights", "top_flights"]:
+        if key not in data or not isinstance(data[key], list):
+            continue
+        for itinerary in data[key]:
+            flights = itinerary.get("flights", [])
+            if len(flights) < 2:
+                continue
+            if airline_name_matches(flights[0], airline_name) or airline_name_matches(flights[1], airline_name):
+                price = parse_price(itinerary.get("price"))
+                if price is not None:
+                    candidates.append((price, itinerary))
+    if candidates:
+        candidates.sort(key=lambda x: x[0])
+        itinerary = candidates[0][1]
+        flights = itinerary.get("flights", [])
+        return {
+            "price": candidates[0][0],
+            "outbound": flights[0],
+            "return": flights[1],
+            "match": f"mas barato {airline_name} (fallback)",
+        }
+    return None
+
+
 def get_cheapest_round_trip(data):
+    """Ultimo fallback: itinerario redondo mas barato sin filtro."""
     candidates = []
     for key in ["best_flights", "other_flights", "top_flights"]:
         if key not in data or not isinstance(data[key], list):
@@ -219,56 +264,58 @@ def get_cheapest_round_trip(data):
     return None
 
 
+def log_available_flights(data):
+    """Imprime los numeros de vuelo disponibles para depuracion."""
+    print("  Vuelos disponibles en la respuesta:")
+    for key in ["best_flights", "other_flights", "top_flights"]:
+        if key not in data or not isinstance(data[key], list):
+            continue
+        for i, itinerary in enumerate(data[key][:3]):
+            flights = itinerary.get("flights", [])
+            nums = []
+            for f in flights:
+                carrier = f.get("carrier_code", f.get("airline", ""))
+                num = f.get("flight_number", "?")
+                nums.append(f"{carrier}{num}")
+            price = itinerary.get("price", "?")
+            print(f"    {key}[{i}] {nums} -> {price}")
+
+
 def format_flight_line(leg, option_leg, emoji):
     if leg is None:
         return f"{emoji} {option_leg['flight_number']} {option_leg['from']} -> {option_leg['to']}"
     dep = leg.get("departure_airport", {}).get("id", option_leg["from"])
     arr = leg.get("arrival_airport", {}).get("id", option_leg["to"])
+    carrier = leg.get("carrier_code", leg.get("airline", ""))
     fn = leg.get("flight_number", option_leg["flight_number"])
-    return f"{emoji} {fn} {dep} -> {arr}"
+    full_fn = f"{carrier}{fn}".strip()
+    return f"{emoji} {full_fn} {dep} -> {arr}"
 
 
 def check_option(option, api_key, history):
     option_name = option["name"]
     opt_hist = init_option_history(history, option_name, option["baseline_price"])
 
-    print(f"\n[{option_name}] Buscando tramos exactos...")
+    print(f"\n[{option_name}] Buscando vuelo redondo {option['outbound']['from']}->{option['outbound']['to']} ...")
 
-    # Buscar ida y vuelta por separado
-    out_data = search_one_way(option["outbound"]["date"], option["outbound"]["from"], option["outbound"]["to"], api_key)
-    time.sleep(2)
-    ret_data = search_one_way(option["return"]["date"], option["return"]["from"], option["return"]["to"], api_key)
-    time.sleep(2)
+    try:
+        data = search_round_trip(option, api_key)
+    except Exception as e:
+        print(f"  ERROR consultando SerpApi: {e}", file=sys.stderr)
+        opt_hist["last_check_at"] = datetime.now(timezone.utc).isoformat()
+        return False
 
-    out_match = find_flight_in_data(out_data, option["outbound"]["flight_number"])
-    ret_match = find_flight_in_data(ret_data, option["return"]["flight_number"])
+    result = find_matching_round_trip(data, option)
 
-    result = None
+    if result is None:
+        result = get_cheapest_airline_round_trip(data, option_name)
 
-    if out_match and ret_match and out_match["price"] is not None and ret_match["price"] is not None:
-        total = out_match["price"] + ret_match["price"]
-        result = {
-            "price": total,
-            "outbound": out_match["flight"],
-            "return": ret_match["flight"],
-            "out_price": out_match["price"],
-            "ret_price": ret_match["price"],
-            "match": "ida + vuelta exactos",
-        }
-        print(f"  Tramo ida: €{out_match['price']:.2f}")
-        print(f"  Tramo vuelta: €{ret_match['price']:.2f}")
-        print(f"  TOTAL exacto: €{total:.2f}")
-    else:
-        print(f"  No se encontraron ambos tramos exactos. Fallback a redondo...")
-        rt_data = search_round_trip(option, api_key)
-        result = find_matching_round_trip(rt_data, option)
-        if result is None:
-            result = get_cheapest_round_trip(rt_data)
-        if result:
-            print(f"  TOTAL redondo (fallback): €{result['price']:.2f} ({result['match']})")
+    if result is None:
+        result = get_cheapest_round_trip(data)
 
     if result is None or result["price"] is None:
         print(f"  No se pudo obtener precio para {option_name}.")
+        log_available_flights(data)
         opt_hist["last_check_at"] = datetime.now(timezone.utc).isoformat()
         return False
 
@@ -280,11 +327,10 @@ def check_option(option, api_key, history):
         "at": now_iso,
         "price": price,
         "match": result["match"],
-        "out_price": result.get("out_price"),
-        "ret_price": result.get("ret_price"),
     })
     opt_hist["checks"] = opt_hist["checks"][-30:]
 
+    print(f"  Precio encontrado: €{price:.2f} ({result['match']})")
     print(f"  Mejor precio historico: €{opt_hist['best_price']:.2f}")
 
     if price < opt_hist["best_price"]:
@@ -296,19 +342,11 @@ def check_option(option, api_key, history):
         out_line = format_flight_line(result.get("outbound"), option["outbound"], "🛫")
         ret_line = format_flight_line(result.get("return"), option["return"], "🛬")
 
-        detalle_tramos = ""
-        if "out_price" in result and "ret_price" in result:
-            detalle_tramos = (
-                f"\n🛫 Ida: €{result['out_price']:.2f}\n"
-                f"🛬 Vuelta: €{result['ret_price']:.2f}\n"
-            )
-
         msg = (
             f"✈️ *Bajada de precio: {option_name}*\n\n"
             f"💶 Precio total actual: *€{price:.2f}*\n"
             f"📉 Mejor precio anterior: €{previous_best:.2f}\n"
-            f"💰 Ahorro: *€{ahorro:.2f}*"
-            f"{detalle_tramos}\n"
+            f"💰 Ahorro: *€{ahorro:.2f}*\n\n"
             f"{out_line}\n"
             f"{ret_line}\n\n"
             f"🕐 {datetime.now(timezone.utc).strftime('%d/%m/%Y %H:%M')} UTC"
