@@ -1,0 +1,41 @@
+name: Flight Price Monitor
+
+on:
+  schedule:
+    # Dos veces al dia: 09:13 UTC y 21:13 UTC
+    # (horas con offset para evitar congestion de GitHub Actions)
+    - cron: "13 9,21 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  monitor-flights:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore flight price history
+        uses: actions/cache@v4
+        with:
+          path: flight_price_history.json
+          key: flight-history-${{ github.run_id }}
+          restore-keys: |
+            flight-history-
+
+      - name: Run flight price monitor
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
+        run: python check_flights.py

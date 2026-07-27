@@ -1,6 +1,6 @@
-# Bot de Alertas BTC + WBIT (Telegram)
+# Bot de Alertas BTC + WBIT + Vuelos (Telegram)
 
-Bot que monitorea Bitcoin y WBIT (WisdomTree Physical Bitcoin ETP) y te avisa por Telegram cuando ocurre algo importante.
+Bot que monitorea Bitcoin, WBIT (WisdomTree Physical Bitcoin ETP) y precios de vuelos, avisandote por Telegram cuando ocurre algo importante.
 
 ## Alertas configuradas
 
@@ -37,10 +37,29 @@ En GitHub: `Settings` → `Secrets and variables` → `Actions` → `New reposit
 
 ### 3. Probar
 
-- **Test Telegram**: workflow manual para verificar la conexión.
+- **Test Telegram**: workflow manual para verificar la conexion.
 - **BTC Price Alert**: workflow manual para probar todas las alertas.
+- **Flight Price Monitor**: workflow manual para probar el monitor de vuelos.
 
-### 4. Personalizar alertas
+### 4. Monitor de vuelos
+
+El bot tambien monitorea dos opciones de vuelo a Tenerife:
+
+| Opcion | Ida | Vuelta | Precio actual |
+|--------|-----|--------|---------------|
+| Vueling | VY3216 BCN→TFN 23 Sep 2026 | VY3209 TFN→BCN 27 Sep 2026 | €158 |
+| Iberia Express | I21561 MAD→TFN 23 Sep 2026 | I21586 TFN→MAD 27 Sep 2026 | €141 |
+
+**Como activarlo:**
+
+1. Registrate gratis en [SerpApi](https://serpapi.com) y copia tu API key.
+2. En GitHub: `Settings` → `Secrets and variables` → `Actions` → `New repository secret`.
+3. Agrega `SERPAPI_API_KEY` con tu clave.
+4. Ejecuta manualmente el workflow **Flight Price Monitor** para probar.
+
+Se ejecuta **2 veces al dia** (09:13 y 21:13 UTC) y avisa si el precio total baja del minimo historico registrado.
+
+### 5. Personalizar alertas
 
 Edita las constantes en `check_btc.py`:
 
